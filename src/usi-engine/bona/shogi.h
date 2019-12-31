@@ -1332,7 +1332,7 @@ int analyze( tree_t * restrict ptree );
 enum usi_mode { usi_off, usi_on };
 extern enum usi_mode usi_mode;
 extern unsigned int usi_time_out_last;
-extern unsigned int usi_byoyomi;
+extern unsigned int usi_byoyomi ;
 extern int fUSIMoveCount;
 
 void CONV usi_out( const char *format, ... );

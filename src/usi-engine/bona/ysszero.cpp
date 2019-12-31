@@ -688,6 +688,7 @@ int uct_search_start(tree_t * restrict ptree, int sideToMove, int ply, char *buf
 	PRT("root phg->hash=%" PRIx64 ", child_num=%d\n",phg->hashcode64,phg->child_num);
 
 	search_start_ct = get_clock();
+	if (usi_byoyomi>0) dLimitSec = usi_byoyomi /1000;
 
 	int thread_max = cfg_num_threads;
 	std::vector<std::thread> ths(thread_max);
@@ -1378,7 +1379,7 @@ int winrate_to_score(float winrate)
 	double v = 0;
 	double w = winrate;
 	// w= 0.9997, v= +4866.857
-	if        ( w > 0.9997	) {
+	if (w > 0.9997) {
 		v = +5000.0;
 	} else if ( w < 0.0003	) {
 		v = -5000.0;
@@ -1413,6 +1414,7 @@ void send_usi_info(tree_t * restrict ptree, int sideToMove, int ply, int nodes, 
 //	char *pv_str = prt_pv_from_hash(ptree, ply, sideToMove, PV_CSA);
 	int depth = (int)(1.0+log(nodes+1.0));
 	char str[TMP_BUF_LEN];
+	depth = (1+strlen(pv_str))/5; // 2019.12.7 改造48
 	sprintf(str,"info depth %d score cp %d nodes %d nps %d pv %s",depth,score,nodes,nps,pv_str);
 	strcat(str,"\n");	// info depth 2 score cp 33 nodes 148 pv 7g7f 8c8d
 	USIOut( "%s", str);

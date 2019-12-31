@@ -105,12 +105,13 @@ void set_dcnn_channels(tree_t * restrict ptree, int sideToMove, int ply, float *
 	int add_base = 0;
 	int x,y;
  	const int t = ptree->nrep + ply - 1;	// 手数。棋譜の手数+探索深さ。ply は1から始まるので1引く。
-	int flip = (t&1);	// 後手の時は全部ひっくり返す
+//	int flip = (t & 1);	// 後手の時は全部ひっくり返す
+	int flip = sideToMove;	// 後手の時は全部ひっくり返す
 	int loop;
 	const int T_STEP = 8;
 	const int STANDARDIZATION = 1;
 
-	if ( sideToMove != (t&1) ) { PRT("sideToMove Err\n"); debug(); }
+//	if ( sideToMove != (t&1) ) { PRT("sideToMove Err\n"); debug(); }
 	if ( ply < 1 ) DEBUG_PRT("ply=%d Err.\n",ply);
 	
 	for (loop=0; loop<T_STEP; loop++) {
