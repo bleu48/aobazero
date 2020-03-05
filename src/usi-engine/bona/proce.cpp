@@ -752,7 +752,8 @@ usi_go(tree_t *restrict ptree, char **lasts)
   }
 //  printf("info string btime %d wtime %d binc %d winc %d byoyomi %d\n", btime, wtime, binc, winc, byoyomi);
   long mtg = (256 - ptree->nrep + 2) / 2;
-  if (mtg > 60) mtg = 60;
+  if (mtg > 20) mtg = 20;
+  if (mtg < 1) mtg = 1;
   long minimum = 2000;
   long remaintime;
   if (root_turn) {

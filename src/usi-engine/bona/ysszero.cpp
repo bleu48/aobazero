@@ -41,6 +41,7 @@ int fPrtNetworkRawPath = 0;
 int fVerbose = 1;
 int fClearHashAlways = 0;
 int fUsiInfo = 0;
+int multipv = 8;
 
 int nLimitUctLoop = 100;
 double dLimitSec = 0;
@@ -568,7 +569,7 @@ char *prt_pv_from_hash(tree_t * restrict ptree, int ply, int sideToMove, int fus
 	if ( phg->deleted ) return str;
 //	if ( phg->hashcode64 != get_marge_hash(ptree, sideToMove) ) return str;
 	if ( phg->hashcode64 != ptree->sequence_hash || phg->hash64pos != get_marge_hash(ptree, sideToMove) ) return str;
-	if ( ply > 30 ) return str;
+	if ( ply > 80 ) return str;
 
 	int max_i = -1;
 	int max_games = 0;
@@ -601,6 +602,48 @@ char *prt_pv_from_hash(tree_t * restrict ptree, int ply, int sideToMove, int fus
 	return str;
 }
 
+char *prt_pv_from_hash2(tree_t * restrict ptree, int ply, int sideToMove, int fusi_str)
+{
+	static char str[TMP_BUF_LEN];
+	if (ply <= 2) str[0] = 0;
+	HASH_SHOGI *phg = HashShogiReadLock(ptree, sideToMove);
+	UnLock(phg->entry_lock);
+	if (phg->deleted) return str;
+	//	if ( phg->hashcode64 != get_marge_hash(ptree, sideToMove) ) return str;
+	if (phg->hashcode64 != ptree->sequence_hash || phg->hash64pos != get_marge_hash(ptree, sideToMove)) return str;
+	if (ply > 80) return str;
+
+	int max_i = -1;
+	int max_games = 0;
+	int i;
+	for (i = 0; i < phg->child_num; i++) {
+		CHILD *pc = &phg->child[i];
+		if (pc->games > max_games) {
+			max_games = pc->games;
+			max_i = i;
+		}
+	}
+	if (max_i >= 0) {
+		CHILD *pc = &phg->child[max_i];
+		if (ply > 1) strcat(str, " ");
+
+		if (fusi_str) {
+			char buf[7];
+			csa2usi(ptree, str_CSA_move(pc->move), buf);
+			strcat(str, buf);
+		}
+		else {
+			const char *sg[2] = { "-", "+" };
+			strcat(str, sg[(ptree->nrep + ply) & 1]);
+			strcat(str, str_CSA_move(pc->move));
+		}
+		MakeMove(sideToMove, pc->move, ply);
+
+		prt_pv_from_hash2(ptree, ply + 1, Flip(sideToMove), fusi_str);
+		UnMakeMove(sideToMove, pc->move, ply);
+	}
+	return str;
+}
 
 int search_start_ct;
 int stop_search_flag = 0;
@@ -745,6 +788,15 @@ int uct_search_start(tree_t * restrict ptree, int sideToMove, int ply, char *buf
 				sort[sort_n][1] = pc->move;
 				sort_n++;
 			}
+		}
+	}
+	double max_v = -1.0; // 着手時にLCBを選択する実装 2020.2.28
+	for (i = 0; i < phg->child_num; i++) {
+		CHILD *pc = &phg->child[i];
+		double uct_value = pc->value - std::sqrt( 2.0 * std::log(static_cast<double>(sum_games)) / static_cast<double>(pc->games + 1)) ;
+		if (uct_value > max_v) {
+			max_v = uct_value;
+			max_i = i;
 		}
 	}
 	if ( max_i >= 0 ) {
@@ -957,7 +1009,13 @@ select_again:
 		
 		// We must multiply puct by two because the range of
 		// mean_action_value is [-1, 1] instead of [0, 1].
+
 		double uct_value = mean_action_value + 2.0 * puct;
+		// LCBでやってみる
+		// double uct_value = mean_action_value - 2.0 * puct;
+		// ポリシー無しのUCTのテスト
+		// double uct_value = pc->value + std::sqrt( 2.0 * std::log(static_cast<double>(phg->games_sum + 1)) / static_cast<double>(pc->games + 1)) ;
+		// double uct_value = pc->value + std::sqrt( 2.0 * std::log(static_cast<double>(phg->games_sum + 1)) / static_cast<double>(pc->games + 1)) + pc->bias/ static_cast<double>(phg->games_sum + 1);
 
 //		if ( depth==0 && phg->games_sum==500 ) PRT("%3d:v=%5.3f,p=%5.3f,u=%5.3f,g=%4d,s=%5d\n",loop,pc->value,puct,uct_value,pc->games,phg->games_sum);
 		if ( uct_value > max_value ) {
@@ -1364,7 +1422,7 @@ int is_send_usi_info(int /*nodes*/)
 //	if ( nodes ==   1 ) flag = 1;
 	if ( prev_send_t == 0 ) flag = 1;
 	double st = get_spend_time(prev_send_t);
-	if ( st > 1.0 || flag ) {
+	if ( st > 0.5 || flag ) {
 		prev_send_t = get_clock();
 		return 1;
 	}
@@ -1396,28 +1454,81 @@ void send_usi_info(tree_t * restrict ptree, int sideToMove, int ply, int nodes, 
 	int max_i = -1;
 	int max_games = 0;
 	int i;
+	int sum_games = 0;
+	const int SORT_MAX = MAX_LEGAL_MOVES;	// 593
+	int sort[SORT_MAX][2];
+	int sort_n = 0;
+
 	for (i=0;i<phg->child_num;i++) {
 		CHILD *pc = &phg->child[i];
 		if ( pc->games > max_games ) {
 			max_games = pc->games;
 			max_i = i;
 		}
+		sum_games += pc->games;
+		if ( pc->games ) {
+			if ( sort_n < SORT_MAX ) {
+				sort[sort_n][0] = pc->games;
+				sort[sort_n][1] = i;
+				sort_n++;
+			}
+		}
 	}
 	UnLock(phg->entry_lock);
 	if ( max_i < 0 ) return;
 
-	CHILD *pc = &phg->child[max_i];
-	float wr = (pc->value + 1.0f) / 2.0f;	// -1 <= x <= +1   -->   0 <= y <= +1
-	int score = winrate_to_score(wr);
-	
-	char *pv_str = prt_pv_from_hash(ptree, ply, sideToMove, PV_USI);
-//	char *pv_str = prt_pv_from_hash(ptree, ply, sideToMove, PV_CSA);
-	int depth = (int)(1.0+log(nodes+1.0));
-	char str[TMP_BUF_LEN];
-	depth = (1+strlen(pv_str))/5; // 2019.12.7 改造48
-	sprintf(str,"info depth %d score cp %d nodes %d nps %d pv %s",depth,score,nodes,nps,pv_str);
-	strcat(str,"\n");	// info depth 2 score cp 33 nodes 148 pv 7g7f 8c8d
-	USIOut( "%s", str);
+	for (i=0; i<sort_n-1; i++) {
+		int max_i = i;
+		int max_g = sort[i][0];
+		int j;
+		for (j=i+1; j<sort_n; j++) {
+			if ( sort[j][0] <= max_g ) continue;
+			max_g = sort[j][0];
+			max_i = j;
+		}
+		if ( max_i == i ) continue;
+		int tmp_i = sort[i][0];
+		int tmp_m = sort[i][1];
+		sort[i][0] = sort[max_i][0];
+		sort[i][1] = sort[max_i][1];
+		sort[max_i][0] = tmp_i;
+		sort[max_i][1] = tmp_m;
+	}
+
+	if (usi_byoyomi < 2000000)
+	if (nodes >= nps * 3) {
+		if (sort_n > 1) {
+			if (sort[0][0] > sort[1][0] * 10) set_stop_search();
+			else if (sort[0][0] - sort[1][0] > int(nps * dLimitSec -nodes)) set_stop_search();
+		} else set_stop_search();
+//		if (sort[0][0] > int(nps * dLimitSec / 2)) set_stop_search();
+	}
+
+	for (i=0;i<multipv;i++) {
+		if (i >= sort_n) break;
+//		if (sort[i][0] <= 1) break;
+		CHILD *pc = &phg->child[sort[i][1]];
+		if (pc == NULL) break;
+//		if (pc->games <= 2) break;
+		float wr = (pc->value + 1.0f) / 2.0f;	// -1 <= x <= +1   -->   0 <= y <= +1
+		int score = winrate_to_score(wr);
+//		USIOut("info string wr %d\n", score);
+
+		char buf[7];
+		csa2usi( ptree, str_CSA_move(pc->move), buf );
+//		USIOut("info string move %s\n", buf);
+
+		MakeMove( sideToMove, pc->move, ply );
+		char *pv_str = prt_pv_from_hash2(ptree, ply+1, Flip(sideToMove), PV_USI);
+		UnMakeMove( sideToMove, pc->move, ply );
+//		int depth = (int)(1.0 + log(nodes + 1.0));
+		int depth = 1 + (1 + strlen(pv_str)) / 5; // 2019.12.7 改造48
+		char str[TMP_BUF_LEN];
+		sprintf(str, "info multipv %d depth %d score cp %d nodes %d nps %d pv %s %s", i + 1, depth, score, sort[i][0], nps, buf, pv_str);
+//		sprintf(str, "info multipv %d depth %d score cp %d nodes %d nps %d pv %s", i + 1, depth, score, nodes, nps, buf);
+		strcat(str,"\n");	// info depth 2 score cp 33 nodes 148 pv 7g7f 8c8d
+		USIOut( "%s", str);
+	}
 }
 
 void usi_newgame()
