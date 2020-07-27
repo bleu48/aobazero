@@ -347,6 +347,9 @@ int YssZero_com_turn_start( tree_t * restrict ptree )
 	} else {
 		sprintf( str_best,"bestmove %s\n",   buf );
 	}
+	if (fUsiInfo && is_declare_win_root(ptree, root_turn)) {
+		sprintf(str_best, "bestmove win\n");
+	}
 	set_latest_bestmove(str_best);
 
 	if ( 0 && m ) {	// test fClearHashAlways
@@ -1079,7 +1082,7 @@ select_again:
 	}
 */
 
-
+	int now_in_check = InCheck(Flip(sideToMove));
 
 #if 1
 	enum { SENNITITE_NONE, SENNITITE_DRAW, SENNITITE_WIN };
@@ -1146,7 +1149,15 @@ select_again:
 		skip_search = 1;
 	}
 
-
+#if 1
+	// 入玉宣言判定
+	if (skip_search == 0 && now_in_check == 0 && fUsiInfo) {
+		if (is_declare_win(ptree, sideToMove)) {
+			win = 1;
+			skip_search = 1;
+		}
+	}
+#endif
 
 	if ( ply >= PLY_MAX-10 ) { PRT("depth over=%d\n",ply); debug(); }
 
@@ -1578,4 +1589,75 @@ void test_dist()
 void test_dist_loop()
 {
 	for (int i = 0; i<10; i++) test_dist();
+}
+
+int is_declare_win(tree_t* restrict ptree, int sideToMove)
+{
+	int king_in3[2], sum_in3[2], pieces_in3[2];
+	king_in3[0] = king_in3[1] = 0;
+	sum_in3[0] = sum_in3[1] = 0;
+	pieces_in3[0] = pieces_in3[1] = 0;
+
+	int irank, ifile;
+	for (irank = rank1; irank <= rank9; irank++) {		// rank1 = 0
+		for (ifile = file1; ifile <= file9; ifile++) {	// file1 = 0
+			int i = irank * nfile + ifile;
+			int piece = BOARD[i];
+			if (piece == 0) continue;
+			// "* ", "FU", "KY", "KE", "GI", "KI", "KA", "HI", "OU", "TO", "NY", "NK", "NG", "##", "UM", "RY"
+			int k = abs(piece);	// 1...FU, 2...KY, 3...KE, ..., 15..RY
+			int flag = 0;
+			int sg = 0;
+			if (piece > 0) {
+				sg = 0;
+				if (irank <= rank3) flag = 1;
+			}
+			else {
+				sg = 1;
+				if (irank >= rank7) flag = 1;
+			}
+			if (flag == 0) continue;
+			if (k == 8) {
+				king_in3[sg] = 1;
+				continue;
+			}
+			pieces_in3[sg]++;
+			if ((k & 0x07) >= 6) {
+				sum_in3[sg] += 5;
+			}
+			else {
+				sum_in3[sg] += 1;
+			}
+		}
+	}
+
+	int hn[2][8];
+	int i;
+	for (i = 0; i < 2; i++) {
+		unsigned int hand = HAND_B;	// 先手の持駒
+		if (i == 1)  hand = HAND_W;
+		hn[i][1] = (int)I2HandPawn(hand);
+		hn[i][2] = (int)I2HandLance(hand);
+		hn[i][3] = (int)I2HandKnight(hand);
+		hn[i][4] = (int)I2HandSilver(hand);
+		hn[i][5] = (int)I2HandGold(hand);
+		hn[i][6] = (int)I2HandBishop(hand);
+		hn[i][7] = (int)I2HandRook(hand);
+	}
+
+	sum_in3[0] += hn[0][1] + hn[0][2] + hn[0][3] + hn[0][4] + hn[0][5] + (hn[0][6] + hn[0][7]) * 5;
+	sum_in3[1] += hn[1][1] + hn[1][2] + hn[1][3] + hn[1][4] + hn[1][5] + (hn[1][6] + hn[1][7]) * 5;
+
+	int declare_ok = 0;
+	if (sum_in3[0] >= 28 && pieces_in3[0] >= 10 && king_in3[0] && sideToMove == WHITE) declare_ok = 1;
+	if (sum_in3[1] >= 27 && pieces_in3[1] >= 10 && king_in3[1] && sideToMove == BLACK) declare_ok = 1;
+	//	PRT("ok=%d,sum[]=%2d,%2d, pieces[]=%2d,%2d, king[]=%d,%d, side=%d\n", declare_ok,sum_in3[0],sum_in3[1],pieces_in3[0],pieces_in3[1],king_in3[0],king_in3[1],sideToMove);
+	return declare_ok;
+}
+
+int is_declare_win_root(tree_t* restrict ptree, int sideToMove)
+{
+	int now_in_check = InCheck(sideToMove);
+	if (now_in_check) return 0;
+	return is_declare_win(ptree, sideToMove);
 }

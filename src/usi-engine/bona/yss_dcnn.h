@@ -73,6 +73,8 @@ void set_latest_bestmove(char *str);
 int is_send_usi_info(int nodes);
 void send_usi_info(tree_t * restrict ptree, int sideToMove, int ply, int nodes, int nps);
 void usi_newgame();
+int is_declare_win(tree_t* restrict ptree, int sideToMove);
+int is_declare_win_root(tree_t* restrict ptree, int sideToMove);
 
 // yss_net.cpp
 void init_network();
