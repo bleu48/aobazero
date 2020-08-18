@@ -754,7 +754,7 @@ usi_go(tree_t *restrict ptree, char **lasts)
   long mtg = (256 - ptree->nrep + 2) / 2;
   if (mtg > 20) mtg = 20;
   if (mtg < 1) mtg = 1;
-  long minimum = 2000;
+  long minimum = 1000;
   long remaintime;
   if (root_turn) {
 	  remaintime = wtime + (winc + byoyomi - minimum)*mtg -1000;
@@ -838,7 +838,7 @@ usi_go(tree_t *restrict ptree, char **lasts)
 
   return 1;
 }
-
+int sfen_current_move_number = 0;
 static int CONV
 usi_posi(tree_t *restrict ptree, char **lasts)
 {
@@ -1035,7 +1035,8 @@ usi_posi(tree_t *restrict ptree, char **lasts)
       }
     }
 	token = strtok_r(NULL, str_delimiters, lasts);
-	          printf("-%s\n", token);
+    sfen_current_move_number = atoi(token) - 1;
+    if (sfen_current_move_number < 0) { PRT("sfen_current_move_number Err. %s\n", token); debug(); }	          printf("-%s\n", token);
   }
   else if (strcmp(token, "startpos"))
   {

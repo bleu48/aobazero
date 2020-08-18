@@ -200,12 +200,23 @@ void set_dcnn_channels(tree_t * restrict ptree, int sideToMove, int ply, float *
 		set_dcnn_data( data, base, y,x);
 	}
 	if ( DCNN_CHANNELS == 362 ) {
+		float div = 1.0f;
+		if (STANDARDIZATION) div = 512.0f;
+		// 513手目が指せれば引き分け。floodgateは256手目が指せれば引き分け。選手権は321手目が指せれば引き分け。
+		int tt = t + sfen_current_move_number;
+		if (nDrawMove) {
+			int draw = nDrawMove;	// 256, 321
+			int w = 160;	// 何手前から増加させるか。256手引き分けでw=60なら196手から増加
+			if (draw - w < 0) w = draw;
+			int d = draw - w;
+			//			if ( tt > d ) tt += 513 - draw;				// 突然増加
+			//			if ( tt > d ) tt = (tt-d)*(513-d)/w + d;	// 線形に増加
+			if (tt > d) tt = 1.0 / (1.0 + exp(-5.0 * ((tt - d) * 2.0 / w - 1.0))) * (513 - d) + d;	// sigmoidで半分で急激に増加, a = 5
+//			PRT("tt=%d -> %d\n",t + sfen_current_move_number,tt);
+		}
 		for (y=0;y<B_SIZE;y++) for (x=0;x<B_SIZE;x++) {
 //			set_dcnn_data( data, base+1, y,x, t);
-			float div = 1.0f;
-			if ( STANDARDIZATION ) div = 512.0f;
-			set_dcnn_data( data, base+1, y,x, (float)t/div);
-//			set_dcnn_data( data, base+1, y,x, 0);
+			set_dcnn_data( data, base+1, y,x, (float)tt/div);
 		}
 		add_base = 2;
 	}

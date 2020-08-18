@@ -45,6 +45,7 @@ int multipv = 8;
 
 int nLimitUctLoop = 100;
 double dLimitSec = 0;
+int nDrawMove = 0;		// 引き分けになる手数。0でなし。floodgateは256, 選手権は321
 
 HASH_SHOGI *hash_shogi_table = NULL;
 const int HASH_SHOGI_TABLE_SIZE_MIN = 1024*4*4;
@@ -1158,6 +1159,14 @@ select_again:
 		}
 	}
 #endif
+	if (nDrawMove) {
+		int d = ptree->nrep + ply - 1 + 1 + sfen_current_move_number;
+		if (d >= nDrawMove) {
+			win = 0;
+			skip_search = 1;
+			//			PRT("nDrawMove=%d over. ply=%d,moves=%d,%s\n",nDrawMove,ply,d,str_CSA_move(pc->move));
+		}
+	}
 
 	if ( ply >= PLY_MAX-10 ) { PRT("depth over=%d\n",ply); debug(); }
 
@@ -1310,9 +1319,9 @@ int getCmdLineParam(int argc, char *argv[])
 			cfg_random_temp = nf;
 			continue;
 		}
-		if ( strstr(q,"--never_pass") ) {
-//			fNeverPassTillEnd = n;
-//			PRT("fNeverPassTillEnd=%d\n",fNeverPassTillEnd);
+		if (strstr(p, "-drawmove")) {
+			PRT("nDrawMove=%d\n", n);
+			nDrawMove = n;
 			continue;
 		}
 		if ( strstr(p,"-p") ) {
@@ -1507,9 +1516,9 @@ void send_usi_info(tree_t * restrict ptree, int sideToMove, int ply, int nodes, 
 	}
 
 	if (usi_byoyomi < 2000000)
-	if (nodes >= nps * 3) {
+	if (nodes >= nps * dLimitSec /3) {
 		if (sort_n > 1) {
-			if (sort[0][0] > sort[1][0] * 10) set_stop_search();
+			if (sort[0][0] > sort[1][0] * 50) set_stop_search();
 			else if (sort[0][0] - sort[1][0] > int(nps * dLimitSec -nodes)) set_stop_search();
 		} else set_stop_search();
 //		if (sort[0][0] > int(nps * dLimitSec / 2)) set_stop_search();
